@@ -1,0 +1,11 @@
+void PORT_INT(unsigned char portname);
+void SET_PIN_DIR(unsigned char portname,unsigned char pinnumber,unsigned char direction);
+void SET_PIN_DATA(unsigned char portname,unsigned char pinnumber,unsigned char data);
+void TOGLE_PIN(unsigned char portname,unsigned char pinnumber);
+void SET_PORT_DIR(unsigned char portname,unsigned char direction);
+void SET_PORT_DATA(unsigned char portname,unsigned char data);
+unsigned char READ_PIN (unsigned char portname,unsigned char pinnumber);
+unsigned char READ_PORT (unsigned char portname);
+void ENABLE_PULLUP(unsigned char portname,unsigned char pinnumber);
+void SET_HIGHNIBBLE(unsigned char portname,unsigned char data);
+void SET_LOWNIBBLE(unsigned char portname,unsigned char data);
