@@ -6,6 +6,8 @@
 #include "LCD.h"
 #include "UART.h"
 #include "GPS.h"
+#include "GPIO.h"
+#include "LED.h"
 
 
 #define LCD_Clear() lcd_cmd(0x01)
