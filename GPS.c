@@ -27,103 +27,119 @@ Landmark landmarks[] = {
     {30.064242, 31.280137, 6},  // "Hall A"
     {30.063459, 31.279696, 5},  // "Lupan"
     {30.0642569, 31.2778623, 5},  // "Civil"
-    {30.06575420, 31.27833720, 8}   // "Fountain"
+    {30.06575420, 31.27833720, 8},   // "Fountain"
+    {30.065153, -31.280037, 7} //"Library"
 };
 
 const int landmarkCount = sizeof(landmarks) / sizeof(Landmark);
 
-char* name[5] = {"Hall A", "Lupan", "Civil", "Fountain", "Error"};
+char* name[6] = {"Hall A", "Lupan", "Civil", "Fountain", "Library", "Error"};
 
 // ------ Function Definitions ------
 
 // Reads the relevant part of the GPRMC sentence from UART
-void GPS_READ() {
-    char flag; // Will be used in logname check
-    char counter = 0; // Used in filling gps_input_array
-    char recieved_char; // For readability
-    char i; // Counter
+void GPS_ReadData(void) {
+    enum State { SEARCHING, HEADER, DATA } state = SEARCHING;
+    char buffer[80] = {0}; // Local buffer to avoid modifying global directly
+    char ch;
+    int index = 0;
+    const char *header = "$GPRMC,";
+    int headerIndex = 0;
 
-    // Check for the GPRMC log name
-    do {
-        flag = 1;
-        for (i = 0; i < 7; i++) { // 7 is strlen("$GPRMC,")
-            if (UART2_ReadChar() != GPS_LOGNAME[i]) {
-                flag = 0;
+    // State machine to read GPS data
+    while (index < sizeof(buffer) - 1) {
+        ch = UART2_ReadChar(); // Assume this blocks until data is available
+
+        switch (state) {
+            case SEARCHING:
+                if (ch == header[headerIndex]) {
+                    headerIndex++;
+                    if (headerIndex == strlen(header)) {
+                        state = HEADER;
+                        headerIndex = 0; // Reset for next check if needed
+                    }
+                } else {
+                    headerIndex = 0; // Reset if mismatch
+                }
                 break;
-            }
+
+            case HEADER:
+                if (ch == ',') {
+                    state = DATA;
+                }
+                buffer[index++] = ch;
+                break;
+
+            case DATA:
+                buffer[index++] = ch;
+                if (ch == '*' || ch == '\n') {
+                    buffer[index] = '\0'; // Null terminate
+                    // Copy to global array if needed
+                    strncpy(GPS_input_array, buffer, sizeof(GPS_input_array) - 1);
+                    GPS_input_array[sizeof(GPS_input_array) - 1] = '\0';
+                    return;
+                }
+                break;
         }
-    } while (flag == 0);
-
-    // Clear GPS_input_array (ensure null termination if expecting string functions later)
-    // strcpy(GPS_input_array, "");
-    // More robust: memset(GPS_input_array, 0, sizeof(GPS_input_array));
-    memset(GPS_input_array, 0, sizeof(GPS_input_array));
-
-
-    // Read data until 'E' (East designator for longitude) or end of buffer
-    counter = 0; // Reset counter for GPS_input_array
-    do {
-        recieved_char = UART2_ReadChar();
-        if (counter < sizeof(GPS_input_array) - 1) { // Prevent buffer overflow
-            GPS_input_array[counter] = recieved_char;
-            counter++;
-        } else {
-            // Buffer full, handle error or break
-            break;
-        }
-    } while (recieved_char != 'E' && recieved_char != '\n' && recieved_char != '*');
-    GPS_input_array[counter] = '\0';
+    }
+    // Buffer overflow, null terminate anyway
+    GPS_input_array[0] = '\0';
 }
 
 
 // Parses the GPRMC sentence data stored in GPS_input_array
-void GPS_format() {
-    char counter_of_token_strings = 0;
-    char temp_input[sizeof(GPS_input_array)]; // Create a mutable copy for strtok
+void GPS_ProcessData(void) {
+    float lat = 0.0f, lon = 0.0f;
+    int field = 0;
+    char *ptr = GPS_input_array;
+    char temp[20];
+    float rawValue;
+    int degrees;
+    float minutes;
+    char direction;
 
-    // GPS_input_array = "UTC_Time,Status,Latitude,N/S,Longitude,E"
-    strcpy(temp_input, GPS_input_array); // Use a copy for strtok
-
-    token = strtok(temp_input, ",");
-
-    // $GPRMC, [0]=UTC, [1]=Status, [2]=Lat, [3]=N/S, [4]=Lon, [5]=E/W ...
-    while (token != NULL && counter_of_token_strings < 12) {
-        strcpy(GPS_2D[counter_of_token_strings], token);
-        token = strtok(NULL, ",");
-        counter_of_token_strings++;
+    // Skip initial $GPRMC,
+    while (*ptr && field < 2) {
+        if (*ptr++ == ',') field++;
     }
 
-    // Check data validity: GPS_2D[1] should be "A"
-    if (counter_of_token_strings > 5 && strcmp(GPS_2D[1], "A") == 0) {
-        // Latitude: GPS_2D[2], N/S: GPS_2D[3]
-        if (strlen(GPS_2D[2]) > 0) {
-            rawLat = atof(GPS_2D[2]);
-            deg = (int)(rawLat / 100);
-            min = rawLat - (float)(deg * 100);
-            latitude = deg + (min / 60.0);
-            if (strcmp(GPS_2D[3], "S") == 0) {
-                latitude = -latitude;
-            }
-        } else {
-            latitude = 0.0; // Invalid or missing data
+    // Parse fields: [2]=Latitude, [3]=N/S, [4]=Longitude, [5]=E/W
+    while (*ptr && field < 6) {
+        if (*ptr == ',') {
+            field++;
+            ptr++;
+            continue;
         }
+        if (field == 2 || field == 4) { // Latitude or Longitude
+            char *end = temp;
+            while (*ptr && *ptr != ',' && (end - temp) < sizeof(temp) - 1) {
+                *end++ = *ptr++;
+            }
+            *end = '\0';
+            rawValue = atof(temp);
+            degrees = (int)(rawValue / 100);
+            minutes = rawValue - (degrees * 100);
+            if (field == 2) lat = degrees + (minutes / 60.0f);
+            else if (field == 4) lon = degrees + (minutes / 60.0f);
+        } else if (field == 3 || field == 5) { // Direction
+            direction = *ptr;
+            if (field == 3 && direction == 'S') lat = -lat;
+            else if (field == 5 && direction == 'W') lon = -lon;
+            ptr++;
+        }
+        while (*ptr && *ptr != ',') ptr++; // Skip to next field
+        field++;
+    }
 
-        // Longitude: GPS_2D[4], E/W: GPS_2D[5]
-        if (strlen(GPS_2D[4]) > 0) {
-            rawLon = atof(GPS_2D[4]);
-            deg = (int)(rawLon / 100);
-            min = rawLon - (float)(deg * 100);
-            longitude = deg + (min / 60.0);
-            if (strcmp(GPS_2D[5], "W") == 0) {
-                longitude = -longitude;
-            }
-        } else {
-            longitude = 0.0; // Invalid or missing data
-        }
+    // Validate status (field 1 should be 'A' for valid data)
+    char *status = GPS_input_array;
+    while (*status && *status != ',') status++;
+    if (*++status == 'A') {
+        latitude = lat;
+        longitude = lon;
     } else {
-        // Data is not valid or not enough tokens
-        latitude = 0.0;
-        longitude = 0.0;
+        latitude = 0.0f;
+        longitude = 0.0f; // Invalid fix
     }
 }
 

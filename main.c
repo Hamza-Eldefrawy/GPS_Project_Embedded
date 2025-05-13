@@ -23,12 +23,8 @@ int main(void) {
     // Initialization
     PORT_INT('b');
 		SET_PIN_DIR('b', 2, 1);
+		SET_PIN_DIR('b', 3, 1);
 
-    PORT_INT('f');
-							
-    LED_INT('f', 1);
-    //LED_INT('f', 2);
-    LED_INT('f', 3);
 
     UART0_Init();
     UART2_Init();
@@ -38,8 +34,8 @@ int main(void) {
     LCD_OutString("Waiting 4 GPS...");
 
     while (1) {
-        GPS_READ();
-        GPS_format();
+        GPS_ReadData();
+        GPS_ProcessData();
 
         nearest_index = FindNearestLandmark(latitude, longitude);
 
@@ -60,20 +56,17 @@ int main(void) {
 
         LCD_Clear();
         
-        if (minDist * 1000 < 70) {
-          //SET_PIN_DATA('b', 2, 1);
-          LED_OFF('f', 1);
-          LED_ON('f', 3);
+        if (minDist * 1000 < 50) {
+          SET_PIN_DATA('b', 2, 1);
+          SET_PIN_DATA('b', 3, 1);
           
-          LCD_OutString("Nearest Loc:");
+          LCD_OutString("Nearest:");
           LCD_OutString(temp_string);
           lcd_cmd(0xc0);
           lcd_string(name[nearest_index], strlen(name[nearest_index]));
         } else {
-          //SET_PIN_DATA('b', 2, 0);
-          LED_OFF('f', 3);
-          LED_ON('f', 1);
-
+          SET_PIN_DATA('b', 2, 0);
+          SET_PIN_DATA('b', 3, 0);
           lcd_string("Keep Going...", 13);
         }
     }

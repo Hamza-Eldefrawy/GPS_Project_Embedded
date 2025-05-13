@@ -40,10 +40,10 @@ extern const int landmarkCount;
 // ------ Function Prototypes ------
 
 // Reads the GPRMC sentence from UART
-void GPS_READ(void);
+void GPS_ReadData(void);
 
 // Parses the GPRMC sentence stored in GPS_input_array and populates latitude and longitude
-void GPS_format(void);
+void GPS_ProcessData(void);
 
 // Convert degrees to radians
 float toRadians(float degree);
